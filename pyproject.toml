@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "synapse"
+version = "0.1.0"
+description = "AI Chatbot toolkit"
+authors = [
+  { name="Ashish Kumar Singh", email="ashishkmr472@gmail.com" }
+]
+dependencies = [
+  "transformers",
+  "kokoro",
+  "deepgram-sdk",
+  "pyaudio",
+  "torch",
+  "numpy",
+  "stream2sentence",
+  "logru",
+  "python-dotenv",
+]
