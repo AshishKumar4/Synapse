@@ -74,6 +74,10 @@ class LLMGenerator:
             current_run.cancel()
             current_run = None
             
+    def wait_for_flush(self):
+        if self.current_run is not None:
+            self.current_run.wait_for_flush()
+            
     def exit(self):
         if self.current_run is not None:
             self.current_run.cancel()

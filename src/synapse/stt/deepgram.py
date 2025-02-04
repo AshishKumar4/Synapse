@@ -48,7 +48,7 @@ def createDeepgramSocket(on_message_callback, channels, sample_rate):
         sample_rate=sample_rate,
         encoding="linear16",
         utterance_end_ms="1000",
-        endpointing=300,
+        endpointing=600,
         # vad_events=True,
     )
     # Start the connection
@@ -97,42 +97,40 @@ class DeepgramTranscriptManager(ABC):
             self._on_new_words_cb(words, speaker, arrived_time)
         
     def handle_transcript_response(self, result: LiveResultResponse, arrived_time: float):
-        self.transcript_response_lock.acquire()
-        try:
-            if result.speech_final:
-                print(colored("<$$final$$>", "red"), end='')
-            words = result.channel.alternatives[0].words
-            if len(words) == 0:
-                self.finalize_sentence()
-                self.transcript_response_lock.release()
-                return
-            
-            identity_length = 0
-            for i in range(min(len(words), len(self.uncommitted_words))):
-                if words[i].word == self.uncommitted_words[i].word:
-                    identity_length += 1
-                else:
-                    break
-                # TODO: Handle past mispredictions and corrections using some events, identified using overlap
+        with self.transcript_response_lock:
+            try:
+                if result.speech_final:
+                    print(colored("<$$final$$>", "red"), end='')
+                words = result.channel.alternatives[0].words
+                if len(words) == 0:
+                    self.finalize_sentence()
+                    return
                 
-            new_words = words[identity_length:]
-            # print(f"<identiy_length: {identity_length}, new_words: {new_words}, uncommitted_words: {self.uncommitted_words}>")
-            if len(new_words) > 0:
-                self.handle_new_words([i.punctuated_word for i in new_words], arrived_time=arrived_time)
-            mispredicted_words = self.uncommitted_words[identity_length:]
-            if len(mispredicted_words) > 0:
-                # print(f"<!MISTAKE{' '.join([i.punctuated_word for i in mispredicted_words])}>", end='')
-                self.handle_new_words([f"<!{' '.join([i.punctuated_word for i in mispredicted_words])}, iter={identity_length}>"])
-            self.uncommitted_words = words
-            
-            if result.is_final:
-                self.finalize_sentence()
-            if result.speech_final:
-                print(colored("<$$speech-final$$>", "red"), end='')
-                self.finalize_speech()
-        except Exception as e:
-            print(colored(f"<!ERROR {e}, {result}>", "red"))
-        self.transcript_response_lock.release()
+                identity_length = 0
+                for i in range(min(len(words), len(self.uncommitted_words))):
+                    if words[i].word == self.uncommitted_words[i].word:
+                        identity_length += 1
+                    else:
+                        break
+                    # TODO: Handle past mispredictions and corrections using some events, identified using overlap
+                    
+                new_words = words[identity_length:]
+                # print(f"<identiy_length: {identity_length}, new_words: {new_words}, uncommitted_words: {self.uncommitted_words}>")
+                if len(new_words) > 0:
+                    self.handle_new_words([i.punctuated_word for i in new_words], arrived_time=arrived_time)
+                mispredicted_words = self.uncommitted_words[identity_length:]
+                if len(mispredicted_words) > 0:
+                    # print(f"<!MISTAKE{' '.join([i.punctuated_word for i in mispredicted_words])}>", end='')
+                    self.handle_new_words([f"<!{' '.join([i.punctuated_word for i in mispredicted_words])}, iter={identity_length}>"])
+                self.uncommitted_words = words
+                
+                if result.is_final:
+                    self.finalize_sentence()
+                if result.speech_final:
+                    print(colored("<$$speech-final$$>", "red"), end='')
+                    self.finalize_speech()
+            except Exception as e:
+                print(colored(f"<!ERROR {e}, {result}>", "red"))
         
     def on_new_words(self, callback):
         self._on_new_words_cb = callback
@@ -161,6 +159,7 @@ class DeepgramSTTStreamer(SpeechToTextStreamer, DeepgramTranscriptManager):
         self.on_new_words(on_new_words)
         
     def commit_text(self, text: str, speaker="Ashish", arrived_time: float = None):
+        # print(colored(f"<{speaker}: {text}>", "light_blue"), end='')
         self.commit((text, speaker, arrived_time))
         
     def __call__(self, frame: bytes):

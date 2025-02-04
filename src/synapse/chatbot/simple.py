@@ -6,11 +6,19 @@ from transformers import PreTrainedModel, PreTrainedTokenizerFast
 from .states import GlobalTranscript
 from .engines.generator import LLMGenerator
 
-from synapse.utils import DataFrame
+from synapse.utils import DataFrame, AI_SPEECH_END_TOKEN
 from synapse.pipeline.streamers.common import InterruptCascadeStreamer, SpeechToTextStreamer
 
 class ChatBot(InterruptCascadeStreamer):
-    def __init__(self, model: PreTrainedModel | str, tokenizer: PreTrainedTokenizerFast = None, infer_on_new_words=True, bot_name="Ratchel", human_names=["Ashish"]):
+    def __init__(
+        self, 
+        model: PreTrainedModel | str, 
+        tokenizer: PreTrainedTokenizerFast = None, 
+        infer_on_new_words=True, 
+        bot_name="Ratchel", 
+        human_names=["Ashish"],
+        transcript_log_path=None
+    ) -> None:
         super(ChatBot, self).__init__()
         self.llm_generator = LLMGenerator(model, tokenizer)
         
@@ -25,7 +33,7 @@ class ChatBot(InterruptCascadeStreamer):
         
         self.infer_on_new_words = infer_on_new_words
         
-        self.global_transcript = GlobalTranscript()
+        self.global_transcript = GlobalTranscript(transcript_log_path)
         def speaker_change_handler(old_speaker, old_speaker_type, new_speaker, new_speaker_type, time):
             print(colored(f'<@@gen speaker change {old_speaker}->{new_speaker} at {time}>', "yellow"), end='')
             # If Old speaker was a bot, call self.cancel()
@@ -40,7 +48,7 @@ class ChatBot(InterruptCascadeStreamer):
         
     def __call__(self, data) -> Any:
         if data == SpeechToTextStreamer.SPEECH_END_TOKEN:
-            print(colored(f'<@@gen speech end>', "red"), end='')
+            print(colored(f'<@@user-speech end>', "red"), end='')
             if not self.infer_on_new_words:
                 self.__generate_response__()
             self.__start_flushing__()
@@ -53,6 +61,9 @@ class ChatBot(InterruptCascadeStreamer):
         text = ' '.join(words)
         if text.strip() == "":
             return
+        
+        self.llm_generator.cancel_current_run()
+        
         self.global_transcript((text, speaker, arrival_time, False))
         if self.infer_on_new_words:
             self.__generate_response__(text)
@@ -76,8 +87,8 @@ class ChatBot(InterruptCascadeStreamer):
                                                                            on_end_callback=self._on_ai_speech_end_cb, 
                                                                            on_word_callback=self._on_ai_words_cb))
         
-    def wait_for_flushing(self):
-        self.llm_generator.get_current_run().wait_for_flush()
+    def wait_for_flush(self):
+        self.llm_generator.wait_for_flush()
     
     def close(self):
         self.llm_generator.exit()
@@ -112,12 +123,16 @@ class ChatBot(InterruptCascadeStreamer):
     # """
         return """
     You are Ratchel, a super intelligent AI Assistant made by Ashish. The User is Ashish.
-    The User interacts with you via voice, which is converted to text and provided to you. But the speech to text conversion is not very good, and the way it works is as follows:
-    The text were generated using a voice to text model which tries to guess the spoken text in realtime, but if after a certain time it thinks that some part of the text was mispredicted, 
-    it would add a text string of type "<!{' '.join([i.punctuated_word for i in mispredicted_words]), iter={correction_position}}>".
+    The User interacts with you via voice, which is converted to text and provided to you. But the speech to text conversion may be imperfect, and the way it works is as follows:
+    -   The text were generated using a voice to text model which tries to guess the spoken text in realtime, but if after a certain time it thinks that some part of the text was mispredicted, 
+        it would add a text string of type f`<!{' '.join([i.punctuated_word for i in mispredicted_words]), iter={correction_position}}>` into the transcript. For example: 
+            Hi.How are you?<!Hi., iter=0>
+        Here, the actual text should have been "How are you?" and 'Hi.' was the mispredicted text. Another Example:
+            ThePlease stop.<!The, iter=0>
+        Here, the actual text should have been "Please stop." and 'The' was the mispredicted text.
+    -   Thus you need to account for such errors and still respond accurately to the user.
     **INSTRUCTIONS:**
     - Your task is to converse with him while keeping in mind that the text you see is not always accurate. Thus you need to understand the context and respond accordingly.
-    - If the conversation is hard to make sense of, you can ask him directly to repeat or clarify his statement. 
     - Your responses need to be interesting, enthusiastic, accurate and engaging. Please do not use any emojis or emoticons in your responses.
     - Your output needs to be in the form of text that can be spoken out by a text to speech model.
     - Do not use lists, bullet points or any other formatting in your responses directly. Formatted text cant be spoken out by the text to speech model.

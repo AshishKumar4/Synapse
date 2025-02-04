@@ -4,6 +4,8 @@ import threading
 from synapse.utils import DataFrame
 from synapse.pipeline.sources import DataSource, EventDrivenDataSource
 from synapse.pipeline.sinks import DataSink
+from synapse.utils import logger
+import traceback
 
 class DataStreamer(DataSource, DataSink):
     def __init__(self) -> None:
@@ -41,7 +43,10 @@ class DataStreamer(DataSource, DataSink):
             for frame in data_source:
                 if self.is_closed:
                     break
-                self(frame)
+                try:
+                    self(frame)
+                except Exception as e:
+                    logger.error(f"Error while processing frame: {e}", traceback.format_exc())
         self.read_from_thread = threading.Thread(target=__read_from)
         self.read_from_thread.start()
         if isinstance(data_source, EventDrivenDataSource):
@@ -51,14 +56,18 @@ class DataStreamer(DataSource, DataSink):
     def write_to(self, data_sink: DataSink):
         def __write_to():
             while True:
-                if self.is_closed:
-                    break
-                data, is_final = self.msg_queue.get()
-                self.msg_queue.task_done()
-                if is_final:
-                    break
-                if data is not None:
-                    data_sink(data)
+                try:
+                    for data in self:
+                        if self.is_closed:
+                            return
+                        # data, is_final = self.msg_queue.get()
+                        # self.msg_queue.task_done()
+                        # if is_final:
+                        #     break
+                        if data is not None:
+                            data_sink(data)
+                except Exception as e:
+                    logger.error(f"Error while writing to sink: {e}", traceback.format_exc())
         self.write_to_thread = threading.Thread(target=__write_to)
         self.write_to_thread.start()
             

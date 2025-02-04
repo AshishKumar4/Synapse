@@ -31,7 +31,7 @@ class PipelineOnEveryFrame(EventDrivenDataStreamer):
     def __init__(self, 
                  *generators: StreamerGenerator) -> None:
         super(PipelineOnEveryFrame, self).__init__()
-        self.interrupt = False
+        self.interrupted = False
         self.generators = generators
         self.current_result_queue = Queue()
     
@@ -72,7 +72,7 @@ class TextPrinter(DataStreamer):
 class InterruptibleStreamer(EventDrivenDataStreamer):
     def __init__(self):
         super(InterruptibleStreamer, self).__init__()
-        self.interrupt = False
+        self.interrupted = False
         self.interrupt_lock = threading.Lock()
     
     def event_handlers(self):
@@ -167,4 +167,3 @@ class CancellableText2SpeechStreamer(TextToSpeechStreamer, InterruptCascadeStrea
     def close(self):
         super(CancellableText2SpeechStreamer, self).close()
         self.is_closed = True
-        self.cancel()

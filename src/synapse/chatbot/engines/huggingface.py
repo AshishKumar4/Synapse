@@ -12,6 +12,7 @@ from transformers import AutoTokenizer, TextStreamer, PreTrainedModel, PreTraine
 
 from .types import InferenceRun
 from .utils import InterruptibleStoppingCriteria
+from synapse.utils import AI_SPEECH_END_TOKEN
 
 class LLMInferenceRun(InferenceRun):
     global_run_id: int = 0
@@ -62,6 +63,8 @@ class LLMInferenceRun(InferenceRun):
                         return
                     if on_word_callback is not None:
                         on_word_callback(word)#' '.join(processed))
+                if on_word_callback is not None:
+                    on_word_callback(AI_SPEECH_END_TOKEN)
                 if on_end_callback is not None:
                     on_end_callback()
                 print(colored(f'<@@flush done {self.run_id}>', "yellow"), end='')
@@ -95,13 +98,11 @@ class LLMInferenceRun(InferenceRun):
         self.thread_pool.submit(__cancel_fn)
         
     def wait_for_flush(self):
-        self.lock.acquire()
-        if self.flush_future is not None:
-            self.flush_future.result()
-        else:
-            self.lock.release()
-            raise Exception("No flush future to wait for")
-        self.lock.release()
+        with self.lock:
+            if self.flush_future is not None:
+                self.flush_future.result()
+            else:
+                raise Exception("No flush future to wait for")
         
     def is_cancelled(self):
         return self.cancelled

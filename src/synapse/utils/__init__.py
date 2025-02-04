@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from .logger import *
 
 GLOBAL_THREAD_POOL = ThreadPoolExecutor(max_workers=32)
+AI_SPEECH_END_TOKEN = "<$AI_SPEECH_END>"
 
 class DataFrame(Any):
     pass

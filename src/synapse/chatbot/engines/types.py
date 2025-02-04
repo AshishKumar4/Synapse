@@ -33,13 +33,11 @@ class InferenceRun(ABC):
         pass
         
     def wait_for_flush(self):
-        self.lock.acquire()
-        if self.flush_future is not None:
-            self.flush_future.result()
-        else:
-            self.lock.release()
-            raise Exception("No flush future to wait for")
-        self.lock.release()
+        with self.lock:
+            if self.flush_future is not None:
+                self.flush_future.result()
+            else:
+                raise Exception("No flush future to wait for")
         
     def is_cancelled(self):
         return self.cancelled

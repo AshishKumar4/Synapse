@@ -2,7 +2,7 @@ import pyaudio
 import sys
 
 from synapse.utils import logger
-from synapse.processors import AITranscriptIterator
+from synapse.processors import AITranscriptIterator, Stream2Sentence
 from synapse.chatbot.simple import ChatBot
 from synapse.pipeline.sources import LocalMicrophone
 from synapse.pipeline.sinks import LocalSpeaker
@@ -14,19 +14,20 @@ class LocalVoiceAgent:
                  channels=1 if sys.platform == 'darwin' else 2, sample_rate=24000, format=pyaudio.paInt16, frames_per_buffer=pyaudio.paFramesPerBufferUnspecified):
         mic = LocalMicrophone(format=format, channels=channels, sample_rate=sample_rate, frames_per_buffer=frames_per_buffer)
         stt = DeepgramSTTStreamer(channels, sample_rate)
-        ai_iter = AITranscriptIterator()
+        # ai_iter = AITranscriptIterator()
+        s2s = Stream2Sentence()
         tts = KokoroTTS(sample_rate=sample_rate)
         speaker = LocalSpeaker(format=format, channels=1, sample_rate=sample_rate, frames_per_buffer=frames_per_buffer)
         
         stt.read_from(mic)
         chatbot.read_from(stt)
-        ai_iter.read_from(chatbot)
-        tts.read_from(ai_iter)
+        s2s.read_from(chatbot)
+        tts.read_from(s2s)
         tts.write_to(speaker)
         
         self.mic = mic
         self.stt = stt
-        self.ai_iter = ai_iter
+        self.s2s = s2s
         self.tts = tts
         self.speaker = speaker
         

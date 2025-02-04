@@ -9,6 +9,9 @@ import openai
 from openai import OpenAI
 from concurrent.futures import ThreadPoolExecutor
 from .types import InferenceRun
+import traceback
+
+from synapse.utils import AI_SPEECH_END_TOKEN
 
 openai_api_key = "EMPTY"
 openai_api_base = "http://localhost:8000/v1"
@@ -69,27 +72,34 @@ class OpenAIInferenceRun(InferenceRun):
                 if self.response is not None:
                     buffer = ""
                     try:
-                        for message in self.response:
-                            if self.cancelled:
-                                print(colored(f'<@@flush cancelled {self.run_id}>', "yellow"), end='')
-                                if on_end_callback is not None:
-                                    on_end_callback()
-                                return
-                            delta = message.choices[0].delta.content or ""
-                            buffer += delta
-                            if buffer.count(" ") >= self.flush_rate:
-                                # Flush buffer if it has more than flush_rate words
-                                if on_word_callback is not None:
-                                    on_word_callback(buffer)
-                                buffer = ""
-                        if buffer:
-                            if on_word_callback is not None:
+                        try:
+                            for message in self.response:
+                                if self.cancelled:
+                                    print(colored(f'<@@flush cancelled {self.run_id}>', "yellow"), end='')
+                                    if on_end_callback is not None:
+                                        on_end_callback()
+                                    return
+                                delta = message.choices[0].delta.content or ""
+                                buffer += delta
+                                if buffer.count(" ") >= self.flush_rate:
+                                    # Flush buffer if it has more than flush_rate words
+                                    if on_word_callback is not None:
+                                        on_word_callback(buffer)
+                                    buffer = ""
+                        except Exception as e:
+                            print(colored(f"[OpenAIInferenceRun Error]: {e}", "red"))
+                        
+                        if on_word_callback is not None:
+                            if buffer != "":
                                 on_word_callback(buffer)
+                            on_word_callback(AI_SPEECH_END_TOKEN)
+                            
                         if on_end_callback is not None:
                             on_end_callback()
                         print(colored(f'<@@flush done {self.run_id}>', "yellow"), end='')
                     except Exception as e:
                         print(colored(f'<@@flush failed {self.run_id}, {e}>', "yellow"), end='')
+                        traceback.print_exc()
                         if on_end_callback is not None:
                             on_end_callback()
                 else:
